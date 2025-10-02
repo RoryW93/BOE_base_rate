@@ -14,6 +14,7 @@ Author: Rory White
 Location: Nottingham, UK
 """
 
+import os
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
@@ -23,17 +24,97 @@ from scipy.stats import norm
 from scipy import signal
 from statsmodels.graphics.tsaplots import plot_acf
 from statsmodels.tsa.stattools import adfuller
+from bs4 import BeautifulSoup
+from datetime import date, datetime, timedelta
 
 
-def pre_process_data():
+def check_local_data(input_string):
+    "Load in data temporarily and check contents for latest file possible"
+
+    print("Checking input data...")
+    print(input_string + " requested.")
+    data_dir = "\\Data\\"
+    file_ext = "csv"
+    today = date.today().strftime("%d/%m/%Y")
+    # template BoE data format to store - "bank_of_england_base_rate_history.csv"
+    # template ONS data format to store - "ons_inflation_data_history.csv"
+
+    if input_string.lower() == "boe":
+        template_files = ["bank_of_england_base_rate_history.csv",
+                          ""
+                          ]
+        BoE_data_file = "bank_of_england_base_rate_history.csv"
+        ONS_data_file = ""
+
+    elif input_string.lower() == "ons":
+        template_files = ["",
+                          "ons_inflation_data_history.csv"
+                          ]
+
+        BoE_data_file = ""
+        ONS_data_file = "ons_inflation_data_history.csv"
+
+    elif input_string.lower() == "both":
+        template_files = ["bank_of_england_base_rate_history.csv",
+                          "ons_inflation_data_history.csv"
+                          ]
+
+        BoE_data_file = "bank_of_england_base_rate_history.csv"
+        ONS_data_file = "ons_inflation_data_history.csv"
+
+    else:
+        print("Incorrect string. \n boe - base rate data. \n ons - inflation data")
+        template_files = []
+        # stop routine
+
+    # if not template_files:
+    # remove non file extension files (csv files only) from the list
+    files_in_dir = os.listdir(os.getcwd() + data_dir)
+    files_in_dir = [file for file in files_in_dir if file_ext in file] # - check and update is!
+
+    dT = []
+
+    for temp_file in template_files:
+        if file_ext in temp_file:
+            for data_file in files_in_dir:
+                if temp_file in data_file:
+
+                    print(data_file + " found locally.")
+                    temp_data, ig_ = pre_process_BoE_data(os.path.join(os.getcwd() + data_dir + data_file))
+                    dT = dT.append(today - temp_data["Date Changed"].max())
+
+    filename = files_in_dir.index(min(dT))
+    # needs re-calculating
+
+    # filename = ""
+
+    return filename
+
+
+def check_online_data(input_string):
+    "Check online data stores directly using web scraping"
+
+    url = []
+    # query and check defined website location
+
+    # extract csv filename of interest
+
+    # load into memory and check data
+
+    # if local copy doesn't exist, store local copy of raw data (and pre-processed data)
+
+def pre_process_BoE_data(filename):
     """
     Loads in bank of england base rate data and pre-processes into user-friendly format
+    TO-DO: Add routine to download and find BoE data from the website
 
+    :param filename: input BoE base rate data file
     :return: data - [Date Changed, Rate]
+    :return: data_diff - [Data Changed, Rate Diff]
     """
 
     # load bank of england base rate time series - pandas dataframe
-    data = pd.read_csv("bank_of_england_base_rate_history.csv", delimiter=",")
+    data = pd.read_csv(filename, delimiter=",")
 
     # convert data into: Date - datemine Rate - float
     data["Date Changed"] = pd.to_datetime(data["Date Changed"])  # , format='%Y-%m-%d')
@@ -43,7 +124,45 @@ def pre_process_data():
     data = data.reindex(index=data.index[::-1])
     data = data.reset_index(drop=True)
 
-    return data
+    # compute BoE base rate - rate of change
+    data_diff = data.copy()
+    data_diff['Rate change'] = data["Rate"].diff()
+    data_diff = data_diff[["Date Changed", "Rate change"]]
+
+    print("BoE base rate data pre-processed.")
+
+    return data, data_diff
+
+
+def pre_process_ONS_data(filename):
+    """
+    Loads in ONS inflation rate
+    TO-DO: Add routine to download and find ONS data from the website
+
+    :param filename: input ONS inflation rate data file
+    :return: data - [Date Changed, Rate]
+    :return: data_diff - [Data Changed, Rate Diff]
+    """
+
+    # load bank of england base rate time series - pandas dataframe
+    data = pd.read_csv(filename, delimiter=",")
+
+    # convert data into: Date - datemine Rate - float
+    data["Date Changed"] = pd.to_datetime(data["Date Changed"])  # , format='%Y-%m-%d')
+    data["Rate"] = data["Rate"].astype(float)
+
+    # flip the dataset round - start from 1975 to latest date
+    data = data.reindex(index=data.index[::-1])
+    data = data.reset_index(drop=True)
+
+    # compute BoE base rate - rate of change
+    data_diff = data.copy()
+    data_diff['Rate change'] = data["Rate"].diff()
+    data_diff = data_diff[["Date Changed", "Rate change"]]
+
+    print("BoE base rate data pre-processed.")
+
+    return data, data_diff
 
 
 def compare_data(data):
@@ -108,7 +227,6 @@ def estimate_PDF(data):
 
 
 def vis_full_dataset(data):
-
     # extract equivalent data
     data_comparison = compare_data(data)
 
@@ -177,7 +295,6 @@ def vis_stat_profile(data):
 
 
 def vis_acf(data):
-
     """
     Visualise the auto-correlation of the base rate data
     Determine stationarity
